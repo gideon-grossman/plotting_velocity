@@ -34,14 +34,12 @@ boolean is_accel_awake = false;
 ACCEL_STATE accel_timer_state = ACCEL_STATE.ACCEL_TIMER_START_STATE;
 long accel_timer = 3000;
 long accel_timer_start;
-float accel_x_offset;
-float accel_y_offset;
+float[] accel_offset = new float [3];
 boolean calibration_complete = false;
 int offset_array_counter = 1;
-int[] offset_x_average_array = new int [500];
-int[] offset_y_average_array = new int[500];
-float sum_x;
-float sum_y;
+int[][] offset_average_array = new int[3][500];
+//int[] offset_x_average_array = new int [500];
+//int[] offset_y_average_array = new int[500];
 long OFFSET_AVERAGING_TIME = 5000;
 
 void setup() {
@@ -86,12 +84,12 @@ void draw() {
     {
     background(255, 205, 0);
     print("accel[0]: ", accel[0], "\r\n");
-    accel_m_s_s[0] = accel[0] / LSB_PER_G * M_S_S_PER_G + accel_x_offset;
-    accel_m_s_s[1] = accel[1] / LSB_PER_G * M_S_S_PER_G + accel_y_offset; 
+    accel_m_s_s[0] = accel[0] / LSB_PER_G * M_S_S_PER_G + accel_offset[0];
+    accel_m_s_s[1] = accel[1] / LSB_PER_G * M_S_S_PER_G + accel_offset[1]; 
     print("accel_x: ", accel_m_s_s[0], "m/s^2\r\n");
     print("accel_y: ", accel_m_s_s[1], "m/s^2\r\n");
-    print ("accel offset: ", accel_x_offset, "\r\n");
-    print ("accel offset: ", accel_y_offset, "\r\n");
+    print ("accel offset: ", accel_offset[0], "\r\n");
+    print ("accel offset: ", accel_offset[1], "\r\n");
 
     
     if ((abs(accel_m_s_s[0]) > 0.15) | (abs(accel_m_s_s[1]) > 0.15)| (abs(accel_m_s_s[2]) > 0.15))
@@ -120,10 +118,6 @@ void draw() {
    //multiply  by 150 to display significant motion on animator.
     position_m[0] = position_m[0] + (velocity_m_s[0] * looping_interval * 150); //should replace looping interval constant with a dynamic measurement.
     position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval * 150)); //should replace looping interval constant with a dynamic measurement.
-    //velocity[0] = velocity[0] + velocity_change[0];
-    //position_change[0] = velocity[0]*looping_interval;
-    //position[0] = position[0] + position_change[0];
-    //translate(velocity[0], velocity[1]);
     translate(position_m[0], position_m[1]);
     print("velocity: ");
     print(velocity_m_s[0], "m/s\t", velocity_m_s[1], "m/s\r\n");
@@ -227,8 +221,9 @@ boolean InitialSettlingTimeElapsed()
 
 int[] GetMovingAverage(int newXValue, int newYValue)
 {
-  int average_x = 0;
-  int average_y = 0;
+  int[] average = new int[3];
+  average[0] = 0;
+  average[1] = 0;
   //print("measurements_amount: ", measurements_amount, "\r\n");
   //while the moving average buffer fills for the first time
   if (measurements_amount < measurements_in_moving_average)
@@ -252,27 +247,19 @@ int[] GetMovingAverage(int newXValue, int newYValue)
     moving_average_elements[1][0] = newYValue;
     
     //average
-    int sum_x = 0;
-    int sum_y = 0;
+    int[] sum = new int[3];
+    sum[0] = 0;
+    sum[1] = 0;
     for (int j = 0; j < measurements_in_moving_average; j++)
     {
-      sum_x += moving_average_elements[0][j];
-      sum_y += moving_average_elements[1][j];
+      sum[0] += moving_average_elements[0][j];
+      sum[1] += moving_average_elements[1][j];
 
     }
-    average_x = sum_x / measurements_in_moving_average;
-    average_y = sum_y / measurements_in_moving_average;
+    average[0] = sum[0] / measurements_in_moving_average;
+    average[1] = sum[1] / measurements_in_moving_average;
   }
-  //print("moving avg array: [");
-  for (int i = 0; i < measurements_in_moving_average; i++)
-  {
-    //print(moving_average_elements[0][i]);
-    //print ("\t");
-  }
-  //print("]\r\n");
-  //print("average:\t"); print(average);
-  int[] averages = {average_x, average_y};
-  return averages;
+  return average;
 }
 
 void StartAccelAwakeTimer()
@@ -317,20 +304,20 @@ void GetOffset()
     /*consider averaging first so many values instead of just taking latest.
     for (int i = 1; i < offset_array_counter + 1; i++)
     {
-      sum_x += offset_x_average_array[i];
-      sum_y += offset_y_average_array[i];
+      sum_x += offset_average_array[0][i];
+      sum_y += offset_average_array[1][i];
     }
     float average = sum_x / offset_array_counter;
-    accel_x_offset = -1.0 * (average / LSB_PER_G * M_S_S_PER_G); 
+    accel_offset[0] = -1.0 * (average / LSB_PER_G * M_S_S_PER_G); 
     */
-    accel_x_offset = accel[0] / LSB_PER_G * M_S_S_PER_G * -1.0;
-    accel_y_offset = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;
+    accel_offset[0] = accel[0] / LSB_PER_G * M_S_S_PER_G * -1.0;
+    accel_offset[1] = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;
     calibration_complete = true;
   }
   else
   {
-    offset_x_average_array[offset_array_counter] = accel[0];
-    offset_y_average_array[offset_array_counter] = accel[1];
+    offset_average_array[0][offset_array_counter] = accel[0];
+    offset_average_array[1][offset_array_counter] = accel[1];
     print ("offset array counter: ", offset_array_counter, "\r\n");
     offset_array_counter++;
   }
