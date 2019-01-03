@@ -6,7 +6,7 @@ import toxi.processing.*;
 ToxiclibsSupport gfx;
 
 Serial port;                         // The serial port
-char[] accelPacket = new char[14];  // InvenSense Teapot packet
+char[] accelPacket = new char[18];  // InvenSense Teapot packet
 int serialCount = 0;                 // current packet byte position
 int aligned = 0;
 int interval = 0;
@@ -15,7 +15,7 @@ int window_height = window_width;
 float velocity[] = {0,0,0};
 float accel_m_s_s[] = {0,0,0};
 float velocity_m_s[] = {0,0,0};
-float position_m[] = {window_width / 2, window_height / 2,0};
+float position_m[] = {window_width / 2, window_height / 2, window_height / 2};
 float velocity_change[] = {0,0,0};
 float position[] = {window_width/2, window_height/2, 0};
 float position_change[] = {0,0,0};
@@ -32,15 +32,13 @@ boolean is_accel_awake = false;
   int direction = 1;
   int accel[] = {0, 0, 0, 0};
 ACCEL_STATE accel_timer_state = ACCEL_STATE.ACCEL_TIMER_START_STATE;
-long accel_timer = 3000;
+long accel_timer = 1000;
 long accel_timer_start;
 float[] accel_offset = new float [3];
 boolean calibration_complete = false;
 int offset_array_counter = 1;
 int[][] offset_average_array = new int[3][500];
-//int[] offset_x_average_array = new int [500];
-//int[] offset_y_average_array = new int[500];
-long OFFSET_AVERAGING_TIME = 5000;
+long OFFSET_AVERAGING_TIME = 12000;
 
 void setup() {
     // 300px square viewport using OpenGL rendering
@@ -83,16 +81,19 @@ void draw() {
     else if (calibration_complete)
     {
     background(255, 205, 0);
-    print("accel[0]: ", accel[0], "\r\n");
     accel_m_s_s[0] = accel[0] / LSB_PER_G * M_S_S_PER_G + accel_offset[0];
     accel_m_s_s[1] = accel[1] / LSB_PER_G * M_S_S_PER_G + accel_offset[1]; 
-    print("accel_x: ", accel_m_s_s[0], "m/s^2\r\n");
-    print("accel_y: ", accel_m_s_s[1], "m/s^2\r\n");
-    print ("accel offset: ", accel_offset[0], "\r\n");
-    print ("accel offset: ", accel_offset[1], "\r\n");
+    accel_m_s_s[2] = accel[2] / LSB_PER_G * M_S_S_PER_G + accel_offset[2];
+    print("accel_x: ", accel_m_s_s[0], "m/s^2\t");
+    print("accel_y: ", accel_m_s_s[1], "m/s^2\t");
+    print("accel_z: ", accel_m_s_s[2], "m/s^2\r\n");
+    print ("accel x offset: ", accel_offset[0], "\t");
+    print ("accel y offset: ", accel_offset[1], "\t");
+    print ("accel z offset: ", accel_offset[2], "\r\n");
+
 
     
-    if ((abs(accel_m_s_s[0]) > 0.15) | (abs(accel_m_s_s[1]) > 0.15)| (abs(accel_m_s_s[2]) > 0.15))
+    if ((abs(accel_m_s_s[0]) > 0.15) || (abs(accel_m_s_s[1]) > 0.15)|| (abs(accel_m_s_s[2]) > 0.15))
     {
     StartAccelAwakeTimer();
     }
@@ -100,6 +101,7 @@ void draw() {
     {
     accel_m_s_s[0] = 0.0;
     accel_m_s_s[1] = 0.0;
+    accel_m_s_s[2] = 0.0;
   }
     
     if (InitialSettlingTimeElapsed() == true)
@@ -108,57 +110,66 @@ void draw() {
       {
         velocity_m_s[0] = velocity_m_s[0] + accel_m_s_s[0] * (float)looping_interval;
         velocity_m_s[1] = velocity_m_s[1] + accel_m_s_s[1] * (float)looping_interval;
+        velocity_m_s[2] = velocity_m_s[2] + accel_m_s_s[2] * (float)looping_interval;
       }
       else 
      {
     velocity_m_s[0] = 0.0;
     velocity_m_s[1] = 0.0;
+    velocity_m_s[2] = 0.0;
     }
    }
    //multiply  by 150 to display significant motion on animator.
     position_m[0] = position_m[0] + (velocity_m_s[0] * looping_interval * 150); //should replace looping interval constant with a dynamic measurement.
     position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval * 150)); //should replace looping interval constant with a dynamic measurement.
-    translate(position_m[0], position_m[1]);
-    print("velocity: ");
-    print(velocity_m_s[0], "m/s\t", velocity_m_s[1], "m/s\r\n");
-    print("position: ");
-    print(position_m[0], "m\t", position_m[1], "m/s\r\n");
+    position_m[2] = (position_m[2] - (velocity_m_s[2] * looping_interval * 500)); //should replace looping interval constant with a dynamic measurement.
+
+    translate(position_m[0], position_m[1], position_m[2]);
+    //print("velocity: ");
+    //print(velocity_m_s[0], "m/s\t", velocity_m_s[1], "m/s\t", velocity_m_s[2], "m/s\t");
+    //print("position: ");
+    //print(position_m[0], "m\t", position_m[1], "m\t", position_m[2], "m/s\r\n");
     rotate(100, 100, 100, 100);
     fill(255, 0, 0, 200);
     box(10, 10, 10);
   }
 }
 
-void serialEvent(Serial port) {
+void serialEvent(Serial port) { //<>//
     interval = millis();
     while (port.available() > 0) {
         int ch = port.read();
         //print((char)ch);
         if (ch == '$') {serialCount = 0;} // this will help with alignment
         if (aligned < 4) {
-            // make sure we are properly aligned on a 14-byte packet
+            // make sure we are properly aligned on an 18-byte packet
             if (serialCount == 0) {
                 if (ch == '$') aligned++; else aligned = 0;
             } else if (serialCount == 1) {
                 if (ch == 2) aligned++; else aligned = 0;
-            } else if (serialCount == 12) {
+            } else if (serialCount == 16) {
                 if (ch == '\r') aligned++; else aligned = 0;
-            } else if (serialCount == 13) {
+            } else if (serialCount == 17) {
                 if (ch == '\n') aligned++; else aligned = 0;
             }
             //println(ch + " " + aligned + " " + serialCount);
             serialCount++;
-            if (serialCount == 14) serialCount = 0;
+            if (serialCount == 18) {serialCount = 0;}
         } else {
             if (serialCount > 0 || ch == '$') {
                 accelPacket[serialCount++] = (char)ch;
-                if (serialCount == 14) {
+                if (serialCount == 18) {
                     serialCount = 0; // restart packet byte position
                     int accel_x_raw = (accelPacket[2] << 24) | (accelPacket[3] << 16) | (accelPacket[4] << 8) | (accelPacket[5]);
-                    int accel_y_raw = (accelPacket[6] << 24) | (accelPacket[7] << 16) | (accelPacket[8] << 8) | (accelPacket[9]);                    
-                    int[] accel_averaged = GetMovingAverage(accel_x_raw, accel_y_raw);
+                    //print("accel_x_raw: ", accel_x_raw);
+                    int accel_y_raw = (accelPacket[6] << 24) | (accelPacket[7] << 16) | (accelPacket[8] << 8) | (accelPacket[9]);   
+                    //print("accel_y_raw: ", accel_y_raw);
+                    int accel_z_raw = (accelPacket[10] << 24) | (accelPacket[11] << 17) | (accelPacket[12] << 8) | (accelPacket[13]);
+                    //print("accel_x_raw: ", accel_x_raw);
+                    int[] accel_averaged = GetMovingAverage(accel_x_raw, accel_y_raw, accel_z_raw);
                     accel[0] = accel_averaged[0];
-                    accel[1] = accel_averaged[1];                    
+                    accel[1] = accel_averaged[1]; 
+                    accel[2] = accel_averaged[2];                    
                     
                     //print("accel[0] & raw"); print(accel[0], "\t", accel_x_raw, "\r\n");
                     //accel[0] = GetMovingAverage(accel_x_raw);
@@ -219,17 +230,20 @@ boolean InitialSettlingTimeElapsed()
   else return false;
 }
 
-int[] GetMovingAverage(int newXValue, int newYValue)
+int[] GetMovingAverage(int newXValue, int newYValue, int newZValue)
 {
   int[] average = new int[3];
   average[0] = 0;
   average[1] = 0;
+  average[2] = 0;
   //print("measurements_amount: ", measurements_amount, "\r\n");
   //while the moving average buffer fills for the first time
   if (measurements_amount < measurements_in_moving_average)
   {
     moving_average_elements[0][measurements_in_moving_average - 1 - measurements_amount] = newXValue;
     moving_average_elements[1][measurements_in_moving_average - 1 - measurements_amount] = newYValue;
+    moving_average_elements[2][measurements_in_moving_average - 1 - measurements_amount] = newYValue;
+
 
     measurements_amount++;
   }
@@ -241,23 +255,29 @@ int[] GetMovingAverage(int newXValue, int newYValue)
     for (int k = measurements_in_moving_average; k > 1; k--)
     {
       moving_average_elements[0][k-1] = moving_average_elements[0][k-2];
-      moving_average_elements[1][k-1] = moving_average_elements[1][k-2];
+      moving_average_elements[1][k-1] = moving_average_elements[1][k-2]; 
+      moving_average_elements[2][k-1] = moving_average_elements[2][k-2];
+
     }
     moving_average_elements[0][0] = newXValue;
     moving_average_elements[1][0] = newYValue;
+    moving_average_elements[2][0] = newZValue;
     
     //average
     int[] sum = new int[3];
     sum[0] = 0;
     sum[1] = 0;
+    sum[2] = 0;
     for (int j = 0; j < measurements_in_moving_average; j++)
     {
       sum[0] += moving_average_elements[0][j];
       sum[1] += moving_average_elements[1][j];
+      sum[2] += moving_average_elements[2][j];
 
     }
     average[0] = sum[0] / measurements_in_moving_average;
     average[1] = sum[1] / measurements_in_moving_average;
+    average[2] = sum[2] / measurements_in_moving_average;
   }
   return average;
 }
@@ -311,13 +331,17 @@ void GetOffset()
     accel_offset[0] = -1.0 * (average / LSB_PER_G * M_S_S_PER_G); 
     */
     accel_offset[0] = accel[0] / LSB_PER_G * M_S_S_PER_G * -1.0;
-    accel_offset[1] = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;
+    accel_offset[1] = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;    
+    accel_offset[2] = accel[2] / LSB_PER_G * M_S_S_PER_G * -1.0;
+
     calibration_complete = true;
   }
   else
   {
     offset_average_array[0][offset_array_counter] = accel[0];
     offset_average_array[1][offset_array_counter] = accel[1];
+    offset_average_array[2][offset_array_counter] = accel[2];
+
     print ("offset array counter: ", offset_array_counter, "\r\n");
     offset_array_counter++;
   }
