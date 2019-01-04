@@ -19,7 +19,7 @@ float position_m[] = {window_width / 2, window_height / 2, window_height / 2};
 float velocity_change[] = {0,0,0};
 float position[] = {window_width/2, window_height/2, 0};
 float position_change[] = {0,0,0};
-int settling_time = 10;
+long SETTLING_TIME = 8000;
 int measurements_in_moving_average = 10;
 int[][] moving_average_elements = new int[3][measurements_in_moving_average];
 int measurements_amount = 0;
@@ -36,11 +36,33 @@ long accel_timer = 1000;
 long accel_timer_start;
 float[] accel_offset = new float [3];
 boolean calibration_complete = false;
-int offset_array_counter = 1;
+int offset_array_counter = 0;
 int[][] offset_average_array = new int[3][500];
 long OFFSET_AVERAGING_TIME = 12000;
-
+PrintWriter calibration_output;
+PrintWriter streaming_data_output;
+float[] offset_sum = {0,0,0};
+int[] accel_raw = new int[3];
+boolean save_calibration_data_to_txt_file = false;
+boolean save_streaming_data_to_txt_file = true;
+long last_interval_time;
+float time_increment_since_last_measurement;
+boolean ignore_motion_when_below_threshold = true;
 void setup() {
+    // Create a new file in the sketch directory
+    
+    if (save_calibration_data_to_txt_file)
+    {
+      calibration_output = createWriter("calibration.txt"); 
+      calibration_output.print("calibration data\r\n");
+    }
+    
+    if (save_streaming_data_to_txt_file)
+    {
+      streaming_data_output = createWriter("streaming.txt");
+    }
+    streaming_data_output.print("millis, accelx, accely, accelz, v_x, v_y, v_z, p_x, p_y, p_z\r\n");
+    
     // 300px square viewport using OpenGL rendering
     size(1000, 1000, P3D);
     gfx = new ToxiclibsSupport(this);
@@ -50,13 +72,13 @@ void setup() {
     smooth();
     frameRate(30);
     translate(width / 2, height / 2, 3);
-    print(width);
+    //print(width);
     
     // display serial port list for debugging/clarity
     println(Serial.list());
 
     // get the first available port (use EITHER this OR the specific port code below)
-    String portName = "/dev/cu.usbmodem411";
+    String portName = "/dev/cu.usbmodem641";
     
     // get a specific serial port (use EITHER this OR the first-available code above)
     //String portName = "COM4";
@@ -70,7 +92,7 @@ void setup() {
 }
 
 void draw() {
-    print("time: ", millis(), "\r\n");
+    //print("time: ", millis(), "\r\n");
       if (millis() - interval > 1000) {
         // resend single character to trigger DMP init/start
         // in case the MPU is halted/reset while applet is running
@@ -84,12 +106,12 @@ void draw() {
     accel_m_s_s[0] = accel[0] / LSB_PER_G * M_S_S_PER_G + accel_offset[0];
     accel_m_s_s[1] = accel[1] / LSB_PER_G * M_S_S_PER_G + accel_offset[1]; 
     accel_m_s_s[2] = accel[2] / LSB_PER_G * M_S_S_PER_G + accel_offset[2];
-    print("accel_x: ", accel_m_s_s[0], "m/s^2\t");
-    print("accel_y: ", accel_m_s_s[1], "m/s^2\t");
-    print("accel_z: ", accel_m_s_s[2], "m/s^2\r\n");
-    print ("accel x offset: ", accel_offset[0], "\t");
-    print ("accel y offset: ", accel_offset[1], "\t");
-    print ("accel z offset: ", accel_offset[2], "\r\n");
+    //print("accel_x: ", accel_m_s_s[0], "m/s^2\t");
+    //print("accel_y: ", accel_m_s_s[1], "m/s^2\t");
+    //print("accel_z: ", accel_m_s_s[2], "m/s^2\r\n");
+    //print ("accel x offset: ", accel_offset[0], "\t");
+    //print ("accel y offset: ", accel_offset[1], "\t");
+    //print ("accel z offset: ", accel_offset[2], "\r\n");
 
 
     
@@ -99,30 +121,44 @@ void draw() {
     }
     else 
     {
-    accel_m_s_s[0] = 0.0;
-    accel_m_s_s[1] = 0.0;
-    accel_m_s_s[2] = 0.0;
+    //accel_m_s_s[0] = 0.0;
+    //accel_m_s_s[1] = 0.0;
+    //accel_m_s_s[2] = 0.0;
   }
     
     if (InitialSettlingTimeElapsed() == true)
     {
-      if(AccelAwake())
+      time_increment_since_last_measurement = GetTimeIncrement();
+      if (ignore_motion_when_below_threshold)
       {
-        velocity_m_s[0] = velocity_m_s[0] + accel_m_s_s[0] * (float)looping_interval;
-        velocity_m_s[1] = velocity_m_s[1] + accel_m_s_s[1] * (float)looping_interval;
-        velocity_m_s[2] = velocity_m_s[2] + accel_m_s_s[2] * (float)looping_interval;
+        if(AccelAwake())
+        {
+          velocity_m_s[0] = velocity_m_s[0] + accel_m_s_s[0] * time_increment_since_last_measurement;
+          velocity_m_s[1] = velocity_m_s[1] + accel_m_s_s[1] * time_increment_since_last_measurement;
+          velocity_m_s[2] = velocity_m_s[2] + accel_m_s_s[2] * time_increment_since_last_measurement;
+        }
+        else 
+        {
+          velocity_m_s[0] = 0.0;
+          velocity_m_s[1] = 0.0; //<>//
+          velocity_m_s[2] = 0.0;
+        }
       }
-      else 
-     {
-    velocity_m_s[0] = 0.0;
-    velocity_m_s[1] = 0.0;
-    velocity_m_s[2] = 0.0;
-    }
+      else if (!ignore_motion_when_below_threshold)
+      {
+          velocity_m_s[0] = velocity_m_s[0] + accel_m_s_s[0] * time_increment_since_last_measurement;
+          velocity_m_s[1] = velocity_m_s[1] + accel_m_s_s[1] * time_increment_since_last_measurement;
+          velocity_m_s[2] = velocity_m_s[2] + accel_m_s_s[2] * time_increment_since_last_measurement;
+      }
    }
    //multiply  by 150 to display significant motion on animator.
-    position_m[0] = position_m[0] + (velocity_m_s[0] * looping_interval * 150); //should replace looping interval constant with a dynamic measurement.
-    position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval * 150)); //should replace looping interval constant with a dynamic measurement.
-    position_m[2] = (position_m[2] - (velocity_m_s[2] * looping_interval * 500)); //should replace looping interval constant with a dynamic measurement.
+    position_m[0] = position_m[0] + (velocity_m_s[0] * looping_interval); //should replace looping interval constant with a dynamic measurement.
+    position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval)); //should replace looping interval constant with a dynamic measurement.
+    position_m[2] = (position_m[2] - (velocity_m_s[2] * looping_interval)); //should replace looping interval constant with a dynamic measurement.
+    streaming_data_output.print(time_increment_since_last_measurement+", ");
+    streaming_data_output.print( accel_m_s_s[0] + ", "+ accel_m_s_s[1] + ", "+ accel_m_s_s[2]+", ");
+    streaming_data_output.print(velocity_m_s[0] + ", "+ velocity_m_s[1] + ", "+ velocity_m_s[2]+", ");
+    streaming_data_output.print(position_m[0]+ ", "+position_m[1] + ", "+position_m[2]+"\r\n");
 
     translate(position_m[0], position_m[1], position_m[2]);
     //print("velocity: ");
@@ -160,13 +196,13 @@ void serialEvent(Serial port) { //<>//
                 accelPacket[serialCount++] = (char)ch;
                 if (serialCount == 18) {
                     serialCount = 0; // restart packet byte position
-                    int accel_x_raw = (accelPacket[2] << 24) | (accelPacket[3] << 16) | (accelPacket[4] << 8) | (accelPacket[5]);
+                    accel_raw[0] = (accelPacket[2] << 24) | (accelPacket[3] << 16) | (accelPacket[4] << 8) | (accelPacket[5]);
                     //print("accel_x_raw: ", accel_x_raw);
-                    int accel_y_raw = (accelPacket[6] << 24) | (accelPacket[7] << 16) | (accelPacket[8] << 8) | (accelPacket[9]);   
+                    accel_raw[1] = (accelPacket[6] << 24) | (accelPacket[7] << 16) | (accelPacket[8] << 8) | (accelPacket[9]);   
                     //print("accel_y_raw: ", accel_y_raw);
-                    int accel_z_raw = (accelPacket[10] << 24) | (accelPacket[11] << 17) | (accelPacket[12] << 8) | (accelPacket[13]);
+                    accel_raw[2] = (accelPacket[10] << 24) | (accelPacket[11] << 17) | (accelPacket[12] << 8) | (accelPacket[13]);
                     //print("accel_x_raw: ", accel_x_raw);
-                    int[] accel_averaged = GetMovingAverage(accel_x_raw, accel_y_raw, accel_z_raw);
+                    int[] accel_averaged = GetMovingAverage(accel_raw[0], accel_raw[1], accel_raw[2]);
                     accel[0] = accel_averaged[0];
                     accel[1] = accel_averaged[1]; 
                     accel[2] = accel_averaged[2];                    
@@ -221,9 +257,7 @@ void serialEvent(Serial port) { //<>//
 
 boolean InitialSettlingTimeElapsed()
 {
-  settling_time--;
-  //print("settling time: ", settling_time);
-  if (settling_time <= 0)
+  if (millis() > SETTLING_TIME)
   {
     return true;
   }
@@ -294,7 +328,7 @@ boolean AccelAwake()
       accel_timer_start = millis();
       accel_timer_state = ACCEL_STATE.ACCEL_TIMER_ELAPSING_STATE;
       is_accel_awake = true;
-      print ("woke up accelerometer#########################\r\n");
+      //print ("woke up accelerometer#########################\r\n");
       break;
       
     case ACCEL_TIMER_ELAPSING_STATE:
@@ -307,7 +341,7 @@ boolean AccelAwake()
      
      case ACCEL_TIMER_ELAPSED_STATE:
        is_accel_awake = false;
-       print("timer elapsedd #########################\r\n");
+       //print("timer elapsedd #########################\r\n");
        break;
   }
     
@@ -316,33 +350,74 @@ boolean AccelAwake()
 
 void GetOffset()
 {
-  print("in GetOffset\r\n");
-  if (millis()>OFFSET_AVERAGING_TIME)
+  if (millis()>(OFFSET_AVERAGING_TIME + SETTLING_TIME))
   {
-    print("milis: ", millis(), "\r\n");
     
-    /*consider averaging first so many values instead of just taking latest.
-    for (int i = 1; i < offset_array_counter + 1; i++)
+    //consider averaging first so many values instead of just taking latest.
+    for (int i = 1; i < offset_array_counter; i++)
     {
-      sum_x += offset_average_array[0][i];
-      sum_y += offset_average_array[1][i];
+      for (int j = 0; j < 3; j++)
+      {
+        offset_sum[j] += offset_average_array[j][i];
+      }
+      if (save_calibration_data_to_txt_file)
+      {
+        calibration_output.print(offset_average_array[0][i]+","+offset_average_array[1][i]+","+offset_average_array[2][i]);
+        calibration_output.print("\r\n");
+      }
     }
-    float average = sum_x / offset_array_counter;
-    accel_offset[0] = -1.0 * (average / LSB_PER_G * M_S_S_PER_G); 
-    */
-    accel_offset[0] = accel[0] / LSB_PER_G * M_S_S_PER_G * -1.0;
-    accel_offset[1] = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;    
-    accel_offset[2] = accel[2] / LSB_PER_G * M_S_S_PER_G * -1.0;
+    float average_x = offset_sum[0] / offset_array_counter - 1;
+    float average_y = offset_sum[1] / offset_array_counter - 1;
+    float average_z = offset_sum[2] / offset_array_counter - 1;
+    
+    if (save_calibration_data_to_txt_file)
+    {
+      calibration_output.print("averages\r\n");
+      calibration_output.print(average_x+","+average_y+","+average_z+"\r\n");
+      calibration_output.print(",,offset_array_counter: "+offset_array_counter+"\r\n");
+    }
+    print("offset array counter: ", offset_array_counter, "\r\n");
+    accel_offset[0] = -1.0 * (average_x / LSB_PER_G * M_S_S_PER_G); 
+    accel_offset[1] = -1.0 * (average_y / LSB_PER_G * M_S_S_PER_G); 
+    accel_offset[2] = -1.0 * (average_z / LSB_PER_G * M_S_S_PER_G); 
+
+    //accel_offset[0] = accel[0] / LSB_PER_G * M_S_S_PER_G * -1.0;
+    //accel_offset[1] = accel[1] / LSB_PER_G * M_S_S_PER_G * -1.0;    
+    //accel_offset[2] = accel[2] / LSB_PER_G * M_S_S_PER_G * -1.0;
 
     calibration_complete = true;
+    if (save_calibration_data_to_txt_file) {calibration_output.print("calibration complete##############\r\n\r\n");}
   }
-  else
+  else if (millis() > SETTLING_TIME)
   {
-    offset_average_array[0][offset_array_counter] = accel[0];
-    offset_average_array[1][offset_array_counter] = accel[1];
-    offset_average_array[2][offset_array_counter] = accel[2];
+    offset_average_array[0][offset_array_counter] = accel_raw[0];
+    offset_average_array[1][offset_array_counter] = accel_raw[1];
+    offset_average_array[2][offset_array_counter] = accel_raw[2];
 
-    print ("offset array counter: ", offset_array_counter, "\r\n");
+    //print ("offset array counter: ", offset_array_counter, "\r\n");
     offset_array_counter++;
   }
+}
+
+void keyPressed() {
+  print("pressed key. stopping program\r\n");
+  if (save_calibration_data_to_txt_file)
+  {
+    calibration_output.flush();  // Writes the remaining data to the file
+    calibration_output.close();  // Finishes the file
+  }
+  if (save_streaming_data_to_txt_file)
+  {
+    streaming_data_output.flush();
+    streaming_data_output.close();
+  }
+  exit();  // Stops the program
+}
+
+float GetTimeIncrement()
+{
+  long time_increment = millis() - last_interval_time;
+  float time_increment_in_seconds = time_increment / 1000.0;
+  last_interval_time = millis();
+  return time_increment_in_seconds;
 }
