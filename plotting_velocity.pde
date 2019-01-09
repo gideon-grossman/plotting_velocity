@@ -16,15 +16,17 @@ float velocity[] = {0,0,0};
 float accel_m_s_s[] = {0,0,0};
 float velocity_m_s[] = {0,0,0};
 float position_m[] = {window_width / 2, window_height / 2, window_height / 2};
+float position_to_graph[] = {width /2, width / 2.3, height / 2};
+//float position_m[] = {0,0,0};
 float velocity_change[] = {0,0,0};
 float position[] = {window_width/2, window_height/2, 0};
 float position_change[] = {0,0,0};
-long SETTLING_TIME = 8000;
+long SETTLING_TIME = 12000;
 int measurements_in_moving_average = 10;
 int[][] moving_average_elements = new int[3][measurements_in_moving_average];
 int measurements_amount = 0;
 float LSB_PER_G = 16384.0;
-float M_S_S_PER_G = 9.8;
+float M_S_S_PER_G = 9.80665;
 float looping_interval = 0.026;
 float ACCEL_OFFSET = 0;
 boolean is_accel_awake = false;
@@ -32,7 +34,7 @@ boolean is_accel_awake = false;
   int direction = 1;
   int accel[] = {0, 0, 0, 0};
 ACCEL_STATE accel_timer_state = ACCEL_STATE.ACCEL_TIMER_START_STATE;
-long accel_timer = 1000;
+long accel_timer = 500;
 long accel_timer_start;
 float[] accel_offset = new float [3];
 boolean calibration_complete = false;
@@ -60,8 +62,9 @@ void setup() {
     if (save_streaming_data_to_txt_file)
     {
       streaming_data_output = createWriter("streaming.txt");
+      streaming_data_output.print("millis, accelx, accely, accelz, v_x, v_y, v_z, p_x, p_y, p_z\r\n");
+
     }
-    streaming_data_output.print("millis, accelx, accely, accelz, v_x, v_y, v_z, p_x, p_y, p_z\r\n");
     
     // 300px square viewport using OpenGL rendering
     size(1000, 1000, P3D);
@@ -71,7 +74,7 @@ void setup() {
     lights();
     smooth();
     frameRate(30);
-    translate(width / 2, height / 2, 3);
+    translate(width / 2, width / 2.3, height / 2);
     //print(width);
     
     // display serial port list for debugging/clarity
@@ -89,6 +92,7 @@ void setup() {
     // send single character to trigger DMP init/start
     // (expected by MPU6050_DMP6 example Arduino sketch)
     port.write('r');
+    
 }
 
 void draw() {
@@ -151,20 +155,23 @@ void draw() {
           velocity_m_s[2] = velocity_m_s[2] + accel_m_s_s[2] * time_increment_since_last_measurement;
       }
    }
-   //multiply  by 150 to display significant motion on animator.
-    position_m[0] = position_m[0] + (velocity_m_s[0] * looping_interval); //should replace looping interval constant with a dynamic measurement.
-    position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval)); //should replace looping interval constant with a dynamic measurement.
-    position_m[2] = (position_m[2] - (velocity_m_s[2] * looping_interval)); //should replace looping interval constant with a dynamic measurement.
-    streaming_data_output.print(time_increment_since_last_measurement+", ");
-    streaming_data_output.print( accel_m_s_s[0] + ", "+ accel_m_s_s[1] + ", "+ accel_m_s_s[2]+", ");
-    streaming_data_output.print(velocity_m_s[0] + ", "+ velocity_m_s[1] + ", "+ velocity_m_s[2]+", ");
-    streaming_data_output.print(position_m[0]+ ", "+position_m[1] + ", "+position_m[2]+"\r\n");
+    position_m[0] = (position_m[0] + (velocity_m_s[0] * looping_interval) + (accel_m_s_s[0] * looping_interval * looping_interval)/2); //should replace looping interval constant with a dynamic measurement.
+    position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval) + (accel_m_s_s[1] * looping_interval * looping_interval)/2); //should replace looping interval constant with a dynamic measurement.
+    position_m[2] = (position_m[2] + (velocity_m_s[2] * looping_interval) + (accel_m_s_s[2] * looping_interval * looping_interval)/2); //should replace looping interval constant with a dynamic measurement.
+    //scale to display significant motion on animator.
+    position_to_graph[0] = (position_to_graph[0] - 400*((velocity_m_s[0] * looping_interval) + (accel_m_s_s[0] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
+    position_to_graph[1] = (position_to_graph[1] + 400*((velocity_m_s[1] * looping_interval) + (accel_m_s_s[1] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
+    position_to_graph[2] = (position_to_graph[2] + 400*((velocity_m_s[2] * looping_interval) + (accel_m_s_s[2] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
+    if (save_streaming_data_to_txt_file)
+    {
+      streaming_data_output.print(time_increment_since_last_measurement+", ");
+      streaming_data_output.print( accel_m_s_s[0] + ", "+ accel_m_s_s[1] + ", "+ accel_m_s_s[2]+", ");
+      streaming_data_output.print(velocity_m_s[0] + ", "+ velocity_m_s[1] + ", "+ velocity_m_s[2]+", ");
+      streaming_data_output.print(position_m[0]+ ", "+position_m[1] + ", "+position_m[2]+"\r\n");
+    }
 
-    translate(position_m[0], position_m[1], position_m[2]);
-    //print("velocity: ");
-    //print(velocity_m_s[0], "m/s\t", velocity_m_s[1], "m/s\t", velocity_m_s[2], "m/s\t");
-    //print("position: ");
-    //print(position_m[0], "m\t", position_m[1], "m\t", position_m[2], "m/s\r\n");
+    translate(position_to_graph[0]+ width / 2, position_to_graph[1] + width / 2.3, position_to_graph[2] + width / 2);
+    //translate(width / 2, width / 2.3, height / 2);
     rotate(100, 100, 100, 100);
     fill(255, 0, 0, 200);
     box(10, 10, 10);
@@ -200,7 +207,7 @@ void serialEvent(Serial port) { //<>//
                     //print("accel_x_raw: ", accel_x_raw);
                     accel_raw[1] = (accelPacket[6] << 24) | (accelPacket[7] << 16) | (accelPacket[8] << 8) | (accelPacket[9]);   
                     //print("accel_y_raw: ", accel_y_raw);
-                    accel_raw[2] = (accelPacket[10] << 24) | (accelPacket[11] << 17) | (accelPacket[12] << 8) | (accelPacket[13]);
+                    accel_raw[2] = (accelPacket[10] << 24) | (accelPacket[11] << 16) | (accelPacket[12] << 8) | (accelPacket[13]);
                     //print("accel_x_raw: ", accel_x_raw);
                     int[] accel_averaged = GetMovingAverage(accel_raw[0], accel_raw[1], accel_raw[2]);
                     accel[0] = accel_averaged[0];
@@ -354,7 +361,7 @@ void GetOffset()
   {
     
     //consider averaging first so many values instead of just taking latest.
-    for (int i = 1; i < offset_array_counter; i++)
+    for (int i = 0; i < offset_array_counter; i++)
     {
       for (int j = 0; j < 3; j++)
       {
@@ -366,9 +373,9 @@ void GetOffset()
         calibration_output.print("\r\n");
       }
     }
-    float average_x = offset_sum[0] / offset_array_counter - 1;
-    float average_y = offset_sum[1] / offset_array_counter - 1;
-    float average_z = offset_sum[2] / offset_array_counter - 1;
+    float average_x = offset_sum[0] / offset_array_counter;
+    float average_y = offset_sum[1] / offset_array_counter;
+    float average_z = offset_sum[2] / offset_array_counter;
     
     if (save_calibration_data_to_txt_file)
     {
