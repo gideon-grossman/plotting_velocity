@@ -34,7 +34,7 @@ boolean is_accel_awake = false;
   int direction = 1;
   int accel[] = {0, 0, 0, 0};
 ACCEL_STATE accel_timer_state = ACCEL_STATE.ACCEL_TIMER_START_STATE;
-long accel_timer = 500;
+long accel_timer = 1000;
 long accel_timer_start;
 float[] accel_offset = new float [3];
 boolean calibration_complete = false;
@@ -159,8 +159,8 @@ void draw() {
     position_m[1] = (position_m[1] - (velocity_m_s[1] * looping_interval) + (accel_m_s_s[1] * looping_interval * looping_interval)/2); //should replace looping interval constant with a dynamic measurement.
     position_m[2] = (position_m[2] + (velocity_m_s[2] * looping_interval) + (accel_m_s_s[2] * looping_interval * looping_interval)/2); //should replace looping interval constant with a dynamic measurement.
     //scale to display significant motion on animator.
-    position_to_graph[0] = (position_to_graph[0] - 400*((velocity_m_s[0] * looping_interval) + (accel_m_s_s[0] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
-    position_to_graph[1] = (position_to_graph[1] + 400*((velocity_m_s[1] * looping_interval) + (accel_m_s_s[1] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
+    position_to_graph[0] = (position_to_graph[0] + 400*((velocity_m_s[0] * looping_interval) + (accel_m_s_s[0] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
+    position_to_graph[1] = (position_to_graph[1] - 400*((velocity_m_s[1] * looping_interval) + (accel_m_s_s[1] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
     position_to_graph[2] = (position_to_graph[2] + 400*((velocity_m_s[2] * looping_interval) + (accel_m_s_s[2] * looping_interval * looping_interval)/2)); //should replace looping interval constant with a dynamic measurement.
     if (save_streaming_data_to_txt_file)
     {
@@ -170,11 +170,24 @@ void draw() {
       streaming_data_output.print(position_m[0]+ ", "+position_m[1] + ", "+position_m[2]+"\r\n");
     }
 
+    pushMatrix();
     translate(position_to_graph[0]+ width / 2, position_to_graph[1] + width / 2.3, position_to_graph[2] + width / 2);
     //translate(width / 2, width / 2.3, height / 2);
     rotate(100, 100, 100, 100);
     fill(255, 0, 0, 200);
     box(10, 10, 10);
+    popMatrix();
+    
+    pushMatrix();
+    translate(10,10,0);
+    text("position (m)\r\n"+position_m[0]+",\r\n"+position_m[1]+",\r\n"+position_m[2]+
+    "\r\nvelocity (m/s)\r\n"+velocity_m_s[0]+",\r\n"+velocity_m_s[1]+",\r\n"+velocity_m_s[2]+
+    "\r\naccel (m/s2)\r\n"+accel_m_s_s[0]+",\r\n"+accel_m_s_s[1]+",\r\n"+accel_m_s_s[2], 20, 20);
+    popMatrix();
+    //text("velocity (m/s)\r\n"+velocity_m_s[0]+",\r\n"+velocity_m_s[1]+",\r\n"+velocity_m_s[2], 20, 20);
+    //text("accel (m/s2)\r\n"+accel_m_s_s[0]+",\r\n"+accel_m_s_s[1]+",\r\n"+accel_m_s_s[2], 20, 20);
+    
+    
   }
 }
 
